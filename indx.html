@@ -1,0 +1,1734 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>새들의 모험: 생존과 탐험 - Bird Adventure Ultra</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js (3D Graphics) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;700;900&display=swap');
+        
+        * {
+            font-family: 'Noto Sans KR', 'Jua', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .font-jua { font-family: 'Jua', sans-serif; }
+
+        /* Glassmorphism Design */
+        .glass {
+            background: rgba(255, 255, 255, 0.88);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+
+        .glass-dark {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        canvas {
+            outline: none;
+            display: block;
+        }
+
+        /* Red damage screen flash effect */
+        #damage-flash {
+            pointer-events: none;
+            transition: opacity 0.2s ease-out;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); border-radius: 8px; }
+        ::-webkit-scrollbar-thumb { background: #10B981; border-radius: 8px; }
+
+        @keyframes pulse-glow {
+            0%, 100% { opacity: 0.8; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.05); }
+        }
+        .animate-pulse-glow { animation: pulse-glow 2s infinite ease-in-out; }
+
+        /* Danger Alert Flash */
+        @keyframes danger-pulse {
+            0%, 100% { border-color: rgba(239, 68, 68, 0.4); }
+            50% { border-color: rgba(239, 68, 68, 1); box-shadow: 0 0 15px rgba(239, 68, 68, 0.6); }
+        }
+        .animate-danger { animation: danger-pulse 1s infinite; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-800 overflow-hidden h-screen w-screen select-none">
+
+    <!-- WebGL Canvas Container -->
+    <div id="game-container" class="absolute inset-0 w-full h-full z-0"></div>
+
+    <!-- Red Damage Flash Screen Effect -->
+    <div id="damage-flash" class="absolute inset-0 bg-red-600/30 z-20 opacity-0"></div>
+
+    <!-- UI LAYER OVERLAY -->
+    <div id="ui-overlay" class="absolute inset-0 z-10 pointer-events-none flex flex-col justify-between p-4 md:p-6">
+        
+        <!-- TOP BAR (Always Visible) -->
+        <div class="flex flex-wrap justify-between items-start gap-3 w-full pointer-events-auto">
+            <!-- Left: Game Title / Day-Night / Health Bar -->
+            <div class="flex flex-col gap-2">
+                <div class="glass px-5 py-2.5 rounded-2xl flex items-center gap-3 shadow-lg border-2 border-emerald-400/50">
+                    <i class="fa-solid font-jua text-2xl text-emerald-600 fa-kiwi-bird animate-bounce"></i>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h1 class="text-xl font-jua text-emerald-900 tracking-wide">새들의 모험: 야생의 법칙</h1>
+                            <span id="time-display" class="text-xs bg-slate-800 text-amber-300 font-bold px-2 py-0.5 rounded-full">
+                                <i class="fa-solid fa-sun"></i> 낮
+                            </span>
+                        </div>
+                        <p id="save-status-indicator" class="text-xs text-emerald-600 font-medium">
+                            <i class="fa-solid fa-cloud-arrow-up"></i> 저장됨
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Player Health & Stamina HUD (Visible in-game) -->
+                <div id="status-bars-container" class="glass-dark p-3 rounded-2xl shadow-xl border border-white/20 w-64 hidden flex flex-col gap-2">
+                    <!-- HP Bar -->
+                    <div>
+                        <div class="flex justify-between items-center text-xs font-bold text-rose-300 mb-1">
+                            <span><i class="fa-solid fa-heart text-rose-500"></i> 생명력 (HP)</span>
+                            <span id="hp-text-display">100 / 100</span>
+                        </div>
+                        <div class="w-full bg-slate-800 h-3 rounded-full overflow-hidden border border-rose-900/50">
+                            <div id="hp-bar-fill" class="bg-gradient-to-r from-rose-600 to-rose-400 h-full w-full transition-all duration-300"></div>
+                        </div>
+                    </div>
+
+                    <!-- Stamina Bar -->
+                    <div>
+                        <div class="flex justify-between items-center text-xs font-bold text-sky-300 mb-1">
+                            <span><i class="fa-solid fa-bolt text-amber-400"></i> 비행 스테미나</span>
+                            <span id="stamina-text-display">100%</span>
+                        </div>
+                        <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden border border-sky-900/50">
+                            <div id="stamina-bar-fill" class="bg-gradient-to-r from-sky-500 to-cyan-300 h-full w-full transition-all duration-150"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Gold Display -->
+            <div class="glass px-6 py-2.5 rounded-2xl flex items-center gap-3 shadow-lg border-2 border-amber-400">
+                <div class="w-10 h-10 rounded-full bg-amber-400 flex items-center justify-center text-amber-900 shadow-inner text-xl">
+                    <i class="fa-solid fa-coins"></i>
+                </div>
+                <div>
+                    <span class="text-xs text-amber-700 font-bold block">소유한 골드</span>
+                    <span id="player-gold-display" class="text-2xl font-black text-amber-900 tracking-wider">0</span>
+                    <span class="text-sm font-bold text-amber-700"> G</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 1. MAIN MENU SCREEN -->
+        <div id="main-menu-screen" class="pointer-events-auto flex flex-col items-center justify-end mb-8 gap-6 transition-all duration-500">
+            <!-- Center Bird Title Badge -->
+            <div class="glass px-8 py-4 rounded-3xl text-center shadow-2xl border-2 border-white/80 max-w-md">
+                <p id="menu-bird-name" class="text-2xl font-jua text-emerald-800 mb-1">참새 (기본)</p>
+                <p id="menu-map-name" class="text-sm text-slate-600">현재 탐험 장소: <span class="font-bold text-emerald-600">푸른 대자연 숲 (600m 확장)</span></p>
+            </div>
+
+            <!-- Main Menu Buttons -->
+            <div class="flex flex-wrap justify-center items-center gap-4 md:gap-6">
+                <!-- Shop Button -->
+                <button id="btn-open-shop" class="group glass hover:bg-amber-400 hover:text-white transition-all duration-300 text-slate-800 font-bold px-7 py-4 rounded-2xl shadow-xl flex items-center gap-3 border-2 border-amber-300 hover:scale-105 active:scale-95">
+                    <i class="fa-solid fa-store text-2xl text-amber-500 group-hover:text-white transition-colors"></i>
+                    <span class="text-xl font-jua">상점</span>
+                </button>
+
+                <!-- Start Game Button -->
+                <button id="btn-start-game" class="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-black px-12 py-5 rounded-3xl shadow-2xl flex items-center gap-4 text-2xl font-jua border-4 border-emerald-200 hover:scale-110 active:scale-95 transition-all duration-300 animate-pulse-glow">
+                    <i class="fa-solid fa-play"></i>
+                    <span>모험 시작</span>
+                </button>
+
+                <!-- Quest Log Button -->
+                <button id="btn-open-quests" class="group glass hover:bg-indigo-500 hover:text-white transition-all duration-300 text-slate-800 font-bold px-7 py-4 rounded-2xl shadow-xl flex items-center gap-3 border-2 border-indigo-300 hover:scale-105 active:scale-95">
+                    <i class="fa-solid fa-scroll text-2xl text-indigo-500 group-hover:text-white transition-colors"></i>
+                    <span class="text-xl font-jua">모험 퀘스트</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 2. IN-GAME HUD SCREEN (Hidden initially) -->
+        <div id="ingame-hud" class="hidden pointer-events-none inset-0 absolute p-6 flex flex-col justify-between">
+            <!-- Top Right Minimap & Flight Indicator -->
+            <div class="flex justify-between items-start w-full">
+                <!-- Left: Flight Status Badge & Controls Guide -->
+                <div class="pointer-events-auto flex flex-col gap-3">
+                    <div id="flight-status-badge" class="glass px-4 py-2 rounded-xl flex items-center gap-2 border-2 border-sky-400 shadow-md">
+                        <span class="w-3 h-3 rounded-full bg-slate-400" id="flight-dot"></span>
+                        <span id="flight-status-text" class="font-bold text-sm text-slate-700">지상 착륙 중</span>
+                    </div>
+
+                    <!-- Predator Warning Badge -->
+                    <div id="enemy-warning-badge" class="hidden glass-dark border-2 border-red-500 text-red-400 px-4 py-2 rounded-xl flex items-center gap-2 shadow-lg animate-danger">
+                        <i class="fa-solid fa-triangle-exclamation text-xl text-red-500 animate-ping"></i>
+                        <span class="font-bold text-xs" id="enemy-warning-text">경고! 천적이 접근 중입니다!</span>
+                    </div>
+
+                    <!-- Key Controls Guide Overlay -->
+                    <div class="glass-dark p-3.5 rounded-2xl text-white text-xs max-w-xs shadow-xl border border-white/20 hidden md:block">
+                        <div class="font-bold text-amber-300 mb-2 border-b border-white/10 pb-1 flex justify-between">
+                            <span><i class="fa-solid fa-gamepad"></i> 모험 조작법</span>
+                            <span class="text-[10px] text-emerald-400">Shift = 부스트</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-1.5 font-mono">
+                            <div><span class="bg-slate-700 px-1.5 py-0.5 rounded font-bold text-amber-400">Space</span> 비행/착륙</div>
+                            <div><span class="bg-slate-700 px-1.5 py-0.5 rounded font-bold text-amber-400">Shift</span> 고속 부스트</div>
+                            <div><span class="bg-slate-700 px-1.5 py-0.5 rounded font-bold text-amber-400">W/S</span> 전진/후진</div>
+                            <div><span class="bg-slate-700 px-1.5 py-0.5 rounded font-bold text-amber-400">A/D</span> 좌/우 회전</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Top: Minimap & Main Menu Return -->
+                <div class="pointer-events-auto flex flex-col items-end gap-2">
+                    <div class="relative glass p-1.5 rounded-2xl border-2 border-emerald-400 shadow-2xl">
+                        <canvas id="minimap-canvas" width="180" height="180" class="rounded-xl bg-emerald-950/80"></canvas>
+                        <div class="absolute top-2 left-2 bg-black/70 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
+                            <i class="fa-solid fa-compass text-emerald-400"></i> 미니맵 (🔴천적 🟡코인 🟣명소)
+                        </div>
+                    </div>
+                    
+                    <button id="btn-return-menu" class="glass px-4 py-2 rounded-xl text-slate-800 font-bold hover:bg-rose-500 hover:text-white transition-all text-xs flex items-center gap-2 border border-rose-300 shadow">
+                        <i class="fa-solid fa-house"></i> 메인으로
+                    </button>
+                </div>
+            </div>
+
+            <!-- Active Quest Banner HUD (Bottom Middle) -->
+            <div id="active-quest-banner" class="pointer-events-auto self-center glass-dark text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-4 border border-amber-400/40 max-w-xl mb-2">
+                <div class="text-2xl text-amber-400"><i class="fa-solid fa-compass animate-spin" style="animation-duration: 8s;"></i></div>
+                <div class="flex-1">
+                    <h4 class="text-xs text-amber-300 font-bold tracking-wider" id="active-quest-title">현재 진행 중인 퀘스트</h4>
+                    <p id="current-quest-desc" class="text-sm font-medium text-slate-200">엄마 새 NPC에게 다가가 모험 퀘스트를 받아보세요!</p>
+                </div>
+                <button id="btn-quick-quest-log" class="bg-amber-400/20 hover:bg-amber-400/40 text-amber-300 text-xs px-3 py-1.5 rounded-xl border border-amber-400/40 font-bold transition">
+                    목록 보기
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- SHOP MODAL -->
+    <div id="shop-modal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 hidden">
+        <div class="glass w-full max-w-3xl rounded-3xl p-6 shadow-2xl flex flex-col max-h-[85vh] border-2 border-amber-300">
+            <!-- Modal Header -->
+            <div class="flex justify-between items-center border-b border-slate-200 pb-4 mb-4">
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-store text-3xl text-amber-500"></i>
+                    <div>
+                        <h2 class="text-2xl font-jua text-slate-800">새 & 맵 상점</h2>
+                        <p class="text-xs text-slate-500">각기 다른 모양과 능력을 가진 특별한 새를 해금하세요!</p>
+                    </div>
+                </div>
+                <button id="btn-close-shop" class="w-10 h-10 rounded-full bg-slate-200 hover:bg-rose-500 hover:text-white transition text-slate-600 font-bold flex items-center justify-center">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <!-- Tabs Header -->
+            <div class="flex gap-2 mb-4 border-b border-slate-200 pb-2">
+                <button id="tab-birds-btn" class="px-5 py-2.5 rounded-xl font-bold text-sm bg-emerald-500 text-white shadow">
+                    <i class="fa-solid fa-dove"></i> 새 종 종류
+                </button>
+                <button id="tab-maps-btn" class="px-5 py-2.5 rounded-xl font-bold text-sm bg-slate-200 text-slate-700 hover:bg-slate-300">
+                    <i class="fa-solid fa-map-location-dot"></i> 탐험 맵 종류
+                </button>
+            </div>
+
+            <!-- Scrollable Content Area -->
+            <div class="overflow-y-auto flex-1 pr-1">
+                <div id="birds-shop-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
+                <div id="maps-shop-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-4 hidden"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- QUEST LIST MODAL -->
+    <div id="quest-modal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 hidden">
+        <div class="glass w-full max-w-2xl rounded-3xl p-6 shadow-2xl flex flex-col border-2 border-indigo-300">
+            <div class="flex justify-between items-center border-b border-slate-200 pb-4 mb-4">
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-scroll text-3xl text-indigo-500"></i>
+                    <div>
+                        <h2 class="text-2xl font-jua text-slate-800">야생 탐험 퀘스트 목록</h2>
+                        <p class="text-xs text-slate-500">퀘스트를 완료하고 골드와 모험 성취감을 얻으세요.</p>
+                    </div>
+                </div>
+                <button id="btn-close-quest" class="w-10 h-10 rounded-full bg-slate-200 hover:bg-rose-500 hover:text-white transition text-slate-600 font-bold flex items-center justify-center">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div id="quest-list-container" class="flex flex-col gap-3 max-h-[60vh] overflow-y-auto pr-1"></div>
+        </div>
+    </div>
+
+    <!-- GAME OVER / RESPAWN MODAL -->
+    <div id="respawn-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
+        <div class="glass-dark text-white w-full max-w-md rounded-3xl p-6 shadow-2xl border-2 border-rose-500 text-center flex flex-col items-center gap-4">
+            <div class="w-20 h-20 rounded-full bg-rose-500/20 border-2 border-rose-500 flex items-center justify-center text-4xl text-rose-500 animate-pulse">
+                <i class="fa-solid fa-skull"></i>
+            </div>
+            <h2 class="text-3xl font-jua text-rose-400">천적에게 습격당했습니다!</h2>
+            <p class="text-sm text-slate-300">야생은 위험합니다! 높이 날아 매와 늑대의 추격을 따돌리세요.</p>
+            <button id="btn-respawn" class="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-black py-3.5 rounded-2xl shadow-lg border border-emerald-300 text-lg font-jua transition transform active:scale-95">
+                안전한 둥지에서 다시 부활하기
+            </button>
+        </div>
+    </div>
+
+    <!-- NPC DIALOGUE POPUP MODAL -->
+    <div id="dialogue-modal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end justify-center p-6 hidden">
+        <div class="glass-dark text-white w-full max-w-2xl rounded-3xl p-6 shadow-2xl border-2 border-emerald-400 flex flex-col gap-4">
+            <div class="flex items-center gap-4">
+                <div class="w-14 h-14 rounded-full bg-emerald-500 border-2 border-white flex items-center justify-center text-3xl text-white shadow-lg">
+                    <i class="fa-solid fa-kiwi-bird"></i>
+                </div>
+                <div>
+                    <h3 id="npc-name-display" class="text-xl font-jua text-amber-300">엄마 새</h3>
+                    <p id="npc-role-display" class="text-xs text-emerald-300 font-medium">숲 속 걱정 많은 주민</p>
+                </div>
+            </div>
+
+            <p id="dialogue-text" class="text-base md:text-lg leading-relaxed bg-black/40 p-4 rounded-2xl border border-white/10 font-medium">
+                대화 내용이 여기에 표시됩니다.
+            </p>
+
+            <div class="flex justify-end gap-3 pt-2">
+                <button id="btn-accept-dialogue" class="bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black px-6 py-2.5 rounded-xl shadow border border-emerald-200 text-sm font-jua">
+                    확인 및 진행
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION -->
+    <div id="toast-message" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 glass px-6 py-3 rounded-2xl shadow-2xl border-2 border-emerald-400 font-bold text-slate-800 text-sm flex items-center gap-3 transition-all duration-300 opacity-0 pointer-events-none translate-y-[-10px]">
+        <i id="toast-icon" class="fa-solid fa-circle-check text-emerald-500 text-xl"></i>
+        <span id="toast-text">알림 메세지</span>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        let app, db, auth;
+        let currentUser = null;
+        let isFirebaseAvailable = false;
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'bird-adventure-ultra';
+
+        try {
+            if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                const firebaseConfig = JSON.parse(__firebase_config);
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        currentUser = user;
+                        isFirebaseAvailable = true;
+                        loadGameData();
+                    }
+                });
+            }
+        } catch (e) {
+            console.warn("Local storage fallback mode:", e);
+        }
+
+        window.saveGameData = async function() {
+            const saveIndicator = document.getElementById('save-status-indicator');
+            if (saveIndicator) saveIndicator.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> 저장 중...`;
+
+            const dataToSave = {
+                gold: window.gameState.gold,
+                currentBirdId: window.gameState.currentBirdId,
+                ownedBirds: window.gameState.ownedBirds,
+                currentMapId: window.gameState.currentMapId,
+                ownedMaps: window.gameState.ownedMaps,
+                questsCompleted: window.gameState.questsCompleted,
+                questsProgress: window.gameState.questsProgress,
+                discoveredLandmarks: Array.from(window.gameState.discoveredLandmarks),
+                updatedAt: new Date().toISOString()
+            };
+
+            try {
+                localStorage.setItem('bird_game_save_v2', JSON.stringify(dataToSave));
+            } catch(e) {}
+
+            if (isFirebaseAvailable && currentUser && db) {
+                try {
+                    const saveDocRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'userData', 'gameProgress');
+                    await setDoc(saveDocRef, dataToSave, { merge: true });
+                    if (saveIndicator) saveIndicator.innerHTML = `<i class="fa-solid fa-cloud-arrow-up"></i> 저장됨`;
+                } catch (err) {
+                    if (saveIndicator) saveIndicator.innerHTML = `<i class="fa-solid fa-hard-drive"></i> 로컬 저장됨`;
+                }
+            } else {
+                if (saveIndicator) saveIndicator.innerHTML = `<i class="fa-solid fa-hard-drive"></i> 로컬 저장됨`;
+            }
+        };
+
+        window.loadGameData = async function() {
+            let loaded = false;
+            if (isFirebaseAvailable && currentUser && db) {
+                try {
+                    const saveDocRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'userData', 'gameProgress');
+                    const snap = await getDoc(saveDocRef);
+                    if (snap.exists()) {
+                        applySaveData(snap.data());
+                        loaded = true;
+                    }
+                } catch (err) {}
+            }
+
+            if (!loaded) {
+                try {
+                    const localData = localStorage.getItem('bird_game_save_v2');
+                    if (localData) applySaveData(JSON.parse(localData));
+                } catch (e) {}
+            }
+        };
+
+        function applySaveData(data) {
+            if (!data) return;
+            if (typeof data.gold === 'number') window.gameState.gold = data.gold;
+            if (data.currentBirdId) window.gameState.currentBirdId = data.currentBirdId;
+            if (Array.isArray(data.ownedBirds)) window.gameState.ownedBirds = data.ownedBirds;
+            if (data.currentMapId) window.gameState.currentMapId = data.currentMapId;
+            if (Array.isArray(data.ownedMaps)) window.gameState.ownedMaps = data.ownedMaps;
+            if (data.questsCompleted) Object.assign(window.gameState.questsCompleted, data.questsCompleted);
+            if (data.questsProgress) Object.assign(window.gameState.questsProgress, data.questsProgress);
+            if (Array.isArray(data.discoveredLandmarks)) window.gameState.discoveredLandmarks = new Set(data.discoveredLandmarks);
+
+            if (window.updateUI) window.updateUI();
+            if (window.rebuildBirdModel) window.rebuildBirdModel();
+            if (window.rebuildMapEnvironment) window.rebuildMapEnvironment();
+        }
+    </script>
+
+    <script>
+        window.gameState = {
+            gold: 300,
+            hp: 100,
+            maxHp: 100,
+            stamina: 100,
+            maxStamina: 100,
+            currentBirdId: 'sparrow',
+            ownedBirds: ['sparrow'],
+            currentMapId: 'forest',
+            ownedMaps: ['forest'],
+            mode: 'menu', // 'menu' or 'ingame'
+            isFlying: false,
+            isBoosting: false,
+            timeOfDay: 0.25, // 0 = dawn, 0.25 = noon, 0.5 = dusk, 0.75 = night
+            questsCompleted: {
+                babyBird: false,
+                landmarks: false,
+                hawkDodge: false,
+                featherCollect: false,
+                berries: false
+            },
+            questsProgress: {
+                hawkDodgesCount: 0,
+                feathersCollected: 0,
+                berriesCollected: 0
+            },
+            discoveredLandmarks: new Set(),
+            babyBirdFound: false,
+            babyBirdFollowing: false
+        };
+
+        // EXPANDED BIRD TYPES DATA WITH UNIQUE GEOMETRIES
+        const BIRD_TYPES = {
+            sparrow: {
+                id: 'sparrow',
+                name: '참새',
+                desc: '자연 친화적인 동글동글 원조 모험 새입니다.',
+                price: 0,
+                hp: 100,
+                speed: 1.0,
+                colorBody: 0x8B5A2B,
+                colorWing: 0x5C3A21,
+                colorBelly: 0xE8D8C8,
+                colorBeak: 0xFFA500
+            },
+            bluebird: {
+                id: 'bluebird',
+                name: '파랑새',
+                desc: 'V자형 갈라진 제비 꼬리를 가진 푸른 빛의 쾌속 비행조입니다.',
+                price: 150,
+                hp: 130,
+                speed: 1.35,
+                colorBody: 0x00A8FF,
+                colorWing: 0x0066CC,
+                colorBelly: 0xE0F7FA,
+                colorBeak: 0xFFC107
+            },
+            crow: {
+                id: 'crow',
+                name: '까마귀',
+                desc: '단단한 체구와 날카로운 큰 부리, 부채꼴 꼬리를 가진 밤의 탐험가.',
+                price: 250,
+                hp: 150,
+                speed: 1.45,
+                colorBody: 0x263238,
+                colorWing: 0x1A237E,
+                colorBelly: 0x37474F,
+                colorBeak: 0x111111
+            },
+            parrot: {
+                id: 'parrot',
+                name: '앵무새',
+                desc: '머리 위 깃털 벼슬과 구부러진 갈고리 부리, 4색 긴 꼬리를 가진 새.',
+                price: 350,
+                hp: 160,
+                speed: 1.6,
+                colorBody: 0xEA2027,
+                colorWing: 0x009432,
+                colorBelly: 0xFFC312,
+                colorBeak: 0xEE5A24
+            },
+            hummingbird: {
+                id: 'hummingbird',
+                name: '벌새',
+                desc: '바늘처럼 길고 가느다란 핀 부리를 지닌 초고속 요정 새.',
+                price: 500,
+                hp: 120,
+                speed: 2.2,
+                colorBody: 0x00E676,
+                colorWing: 0x00B0FF,
+                colorBelly: 0xE0F2F1,
+                colorBeak: 0x263238
+            },
+            falcon: {
+                id: 'falcon',
+                name: '송골매',
+                desc: '오목한 맹금류 갈고리 부리와 에어로다이내믹 날개를 가진 사냥꾼.',
+                price: 700,
+                hp: 220,
+                speed: 1.9,
+                colorBody: 0x353B48,
+                colorWing: 0x2F3640,
+                colorBelly: 0x718093,
+                colorBeak: 0xE1B12C
+            },
+            owl: {
+                id: 'owl',
+                name: '부엉이',
+                desc: '평평한 안면 원반과 거대한 황금 눈, 귀깃(Ear tufts)을 지닌 지혜의 새.',
+                price: 1000,
+                hp: 280,
+                speed: 1.55,
+                colorBody: 0x5D4037,
+                colorWing: 0x3E2723,
+                colorBelly: 0xD7CCC8,
+                colorBeak: 0xFFB300
+            },
+            phoenix: {
+                id: 'phoenix',
+                name: '불사조 (전설)',
+                desc: '왕관 형태의 불꽃 깃관과 3가닥 화염 꼬리를 지닌 신비로운 불새.',
+                price: 1500,
+                hp: 350,
+                speed: 2.3,
+                colorBody: 0xFF4757,
+                colorWing: 0xFFA502,
+                colorBelly: 0xFFDD59,
+                colorBeak: 0xFF6B81
+            },
+            eagle: {
+                id: 'eagle',
+                name: '독수리 (신화)',
+                desc: '순백의 머리와 꼬리, 거대한 갈고리 부리 및 갈라진 날개 깃털을 가진 하늘의 제왕.',
+                price: 2200,
+                hp: 450,
+                speed: 2.5,
+                colorBody: 0x212121,
+                colorWing: 0x424242,
+                colorBelly: 0xFFFFFF,
+                colorBeak: 0xFFC107
+            }
+        };
+
+        // MAP TYPES DATA
+        const MAP_TYPES = {
+            forest: {
+                id: 'forest',
+                name: '푸른 대자연 숲',
+                desc: '입체적인 거대 산맥과 거대 고목, 호수가 있는 600m 모험 공간.',
+                price: 0,
+                groundColor: 0x388E3C,
+                skyColor: 0x87CEEB,
+                treeColors: [0x2E7D32, 0x1B5E20, 0x388E3C],
+                fogColor: 0xC8E6C9
+            },
+            canyon: {
+                id: 'canyon',
+                name: '붉은 암벽 협곡',
+                desc: '높은 절벽과 험준한 바위가 늘어선 협곡 지형.',
+                price: 400,
+                groundColor: 0xA0522D,
+                skyColor: 0xFFE4C4,
+                treeColors: [0x8B4513, 0xD2691E, 0xCD853F],
+                fogColor: 0xF4A460
+            },
+            snow: {
+                id: 'snow',
+                name: '설원 산맥',
+                desc: '하얀 설산과 거친 블리자드가 치는 웅장한 겨울 영역.',
+                price: 800,
+                groundColor: 0xECEFF1,
+                skyColor: 0xB0BEC5,
+                treeColors: [0x37474F, 0x455A64, 0x00695C],
+                fogColor: 0xCFD8DC
+            }
+        };
+
+        // Sound Audio FX Synthesizer
+        class SoundFX {
+            constructor() { this.ctx = null; }
+            init() { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+
+            playCoin() {
+                this.init(); if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(987.77, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(1318.51, this.ctx.currentTime + 0.15);
+                gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
+                osc.connect(gain); gain.connect(this.ctx.destination);
+                osc.start(); osc.stop(this.ctx.currentTime + 0.15);
+            }
+
+            playHurt() {
+                this.init(); if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(220, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(80, this.ctx.currentTime + 0.25);
+                gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.25);
+                osc.connect(gain); gain.connect(this.ctx.destination);
+                osc.start(); osc.stop(this.ctx.currentTime + 0.25);
+            }
+
+            playHawkScreech() {
+                this.init(); if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(1200, this.ctx.currentTime);
+                osc.frequency.linearRampToValueAtTime(1600, this.ctx.currentTime + 0.1);
+                osc.frequency.exponentialRampToValueAtTime(600, this.ctx.currentTime + 0.4);
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.4);
+                osc.connect(gain); gain.connect(this.ctx.destination);
+                osc.start(); osc.stop(this.ctx.currentTime + 0.4);
+            }
+
+            playFlap() {
+                this.init(); if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(160, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+                osc.connect(gain); gain.connect(this.ctx.destination);
+                osc.start(); osc.stop(this.ctx.currentTime + 0.1);
+            }
+
+            playQuestSuccess() {
+                this.init(); if (!this.ctx) return;
+                const notes = [523.25, 659.25, 783.99, 1046.50];
+                notes.forEach((freq, i) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime + i * 0.1);
+                    gain.gain.setValueAtTime(0.2, this.ctx.currentTime + i * 0.1);
+                    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + i * 0.1 + 0.25);
+                    osc.connect(gain); gain.connect(this.ctx.destination);
+                    osc.start(this.ctx.currentTime + i * 0.1);
+                    osc.stop(this.ctx.currentTime + i * 0.1 + 0.25);
+                });
+            }
+
+            playClick() {
+                this.init(); if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(450, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(200, this.ctx.currentTime + 0.05);
+                gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.05);
+                osc.connect(gain); gain.connect(this.ctx.destination);
+                osc.start(); osc.stop(this.ctx.currentTime + 0.05);
+            }
+        }
+        const sfx = new SoundFX();
+    </script>
+
+    <script>
+        let scene, camera, renderer, dirLight, ambientLight;
+        let playerBirdGroup, leftWing, rightWing, tailMesh;
+        let mamaBirdMesh, babyBirdMesh;
+        let mapEnvironmentGroup;
+        let coinsList = [], feathersList = [], berriesList = [];
+        let enemiesList = [];
+        let landmarkObjects = [];
+
+        // Player Motion Variables
+        let playerPos = new THREE.Vector3(0, 5, 0);
+        let playerRotY = 0;
+        let playerSpeed = 0;
+        let wingFlapAngle = 0;
+
+        // Input state
+        const keys = { w: false, a: false, s: false, d: false, space: false, shift: false };
+
+        // Helper procedural height function for Terrain
+        function getTerrainHeight(x, z) {
+            const distFromNest = Math.hypot(x - 10, z - 10);
+            if (distFromNest < 25) return 0.5;
+
+            const distLake = Math.hypot(x + 120, z - 100);
+            if (distLake < 50) return -2.5;
+
+            const distMountain = Math.hypot(x - 180, z + 150);
+            if (distMountain < 80) return Math.max(0, (80 - distMountain) * 0.45);
+
+            const h1 = Math.sin(x * 0.02) * Math.cos(z * 0.02) * 6;
+            const h2 = Math.sin(x * 0.05 + 1) * Math.cos(z * 0.04) * 3;
+            return Math.max(-1, h1 + h2);
+        }
+
+        // FULLY CUSTOMIZED BIRD MESH GENERATOR (UNIQUE 3D GEOMETRY FOR EVERY SPECIES)
+        function createBirdMesh(birdTypeId, isBaby = false, customScale = 1.0) {
+            const config = BIRD_TYPES[birdTypeId] || BIRD_TYPES.sparrow;
+            const birdGroup = new THREE.Group();
+            let scale = (isBaby ? 0.45 : 1.0) * customScale;
+
+            const bodyMat = new THREE.MeshLambertMaterial({ color: config.colorBody });
+            const wingMat = new THREE.MeshLambertMaterial({ color: config.colorWing });
+            const bellyMat = new THREE.MeshLambertMaterial({ color: config.colorBelly });
+            const beakMat = new THREE.MeshLambertMaterial({ color: config.colorBeak });
+
+            let lWing, rWing, tail;
+
+            switch(birdTypeId) {
+                case 'sparrow': { // 1. 참새 - 아담하고 동글동글한 모험가 체형
+                    const bodyGeo = new THREE.SphereGeometry(0.7 * scale, 16, 16);
+                    bodyGeo.scale(0.85, 0.9, 1.1);
+                    const body = new THREE.Mesh(bodyGeo, bodyMat);
+                    birdGroup.add(body);
+
+                    const bellyGeo = new THREE.SphereGeometry(0.6 * scale, 12, 12);
+                    bellyGeo.scale(0.8, 0.85, 1.0);
+                    const belly = new THREE.Mesh(bellyGeo, bellyMat);
+                    belly.position.set(0, -0.15 * scale, 0.1 * scale);
+                    birdGroup.add(belly);
+
+                    const headGeo = new THREE.SphereGeometry(0.5 * scale, 16, 16);
+                    const head = new THREE.Mesh(headGeo, bodyMat);
+                    head.position.set(0, 0.45 * scale, 0.55 * scale);
+                    birdGroup.add(head);
+
+                    const beakGeo = new THREE.ConeGeometry(0.15 * scale, 0.35 * scale, 8);
+                    const beak = new THREE.Mesh(beakGeo, beakMat);
+                    beak.rotation.x = Math.PI / 2;
+                    beak.position.set(0, 0.42 * scale, 0.98 * scale);
+                    birdGroup.add(beak);
+
+                    const eyeGeo = new THREE.SphereGeometry(0.09 * scale, 8, 8);
+                    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+                    const lEye = new THREE.Mesh(eyeGeo, eyeMat);
+                    lEye.position.set(0.25 * scale, 0.55 * scale, 0.85 * scale);
+                    const rEye = lEye.clone();
+                    rEye.position.x = -0.25 * scale;
+                    birdGroup.add(lEye); birdGroup.add(rEye);
+
+                    const wGeo = new THREE.BoxGeometry(1.2 * scale, 0.08 * scale, 0.6 * scale);
+                    wGeo.translate(0.6 * scale, 0, 0);
+                    lWing = new THREE.Mesh(wGeo, wingMat);
+                    lWing.position.set(0.45 * scale, 0.15 * scale, 0);
+                    rWing = lWing.clone();
+                    rWing.scale.x = -1;
+                    rWing.position.x = -0.45 * scale;
+                    birdGroup.add(lWing); birdGroup.add(rWing);
+
+                    const tGeo = new THREE.BoxGeometry(0.5 * scale, 0.05 * scale, 0.7 * scale);
+                    tGeo.translate(0, 0, -0.35 * scale);
+                    tail = new THREE.Mesh(tGeo, wingMat);
+                    tail.position.set(0, 0.1 * scale, -0.65 * scale);
+                    birdGroup.add(tail);
+                    break;
+                }
+
+                case 'bluebird': { // 2. 파랑새 - 유선형 체형, 갈라진 V자형 제비 꼬리
+                    const bodyGeo = new THREE.ConeGeometry(0.65 * scale, 1.6 * scale, 12);
+                    bodyGeo.rotateX(Math.PI / 2);
+                    const body = new THREE.Mesh(bodyGeo, bodyMat);
+                    birdGroup.add(body);
+
+                    const headGeo = new THREE.SphereGeometry(0.48 * scale, 16, 16);
+                    const head = new THREE.Mesh(headGeo, bodyMat);
+                    head.position.set(0, 0.35 * scale, 0.65 * scale);
+                    birdGroup.add(head);
+
+                    const beakGeo = new THREE.ConeGeometry(0.12 * scale, 0.4 * scale, 8);
+                    const beak = new THREE.Mesh(beakGeo, beakMat);
+                    beak.rotation.x = Math.PI / 2;
+                    beak.position.set(0, 0.35 * scale, 1.05 * scale);
+                    birdGroup.add(beak);
+
+                    const eyeGeo = new THREE.SphereGeometry(0.08 * scale, 8, 8);
+                    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x050505 });
+                    const lEye = new THREE.Mesh(eyeGeo, eyeMat);
+                    lEye.position.set(0.24 * scale, 0.45 * scale, 0.9 * scale);
+                    const rEye = lEye.clone(); rEye.position.x = -0.24 * scale;
+                    birdGroup.add(lEye); birdGroup.add(rEye);
+
+                    const tailGroup = new THREE.Group();
+                    const tLeftGeo = new THREE.BoxGeometry(0.15 * scale, 0.04 * scale, 1.1 * scale);
+                    tLeftGeo.rotateY(-0.25);
+                    tLeftGeo.translate(0.18 * scale, 0, -0.55 * scale);
+                    const tLeft = new THREE.Mesh(tLeftGeo, wingMat);
+                    const tRight = new THREE.Mesh(tLeftGeo, wingMat);
+                    tRight.rotation.y = 0.5;
+                    tRight.position.x = -0.36 * scale;
+                    tailGroup.add(tLeft); tailGroup.add(tRight);
+                    tailGroup.position.set(0, 0.05 * scale, -0.7 * scale);
+                    tail = tailGroup;
+                    birdGroup.add(tail);
+
+                    const wGeo = new THREE.BoxGeometry(1.5 * scale, 0.06 * scale, 0.55 * scale);
+                    wGeo.rotateY(-0.2);
+                    wGeo.translate(0.75 * scale, 0, 0);
+                    lWing = new THREE.Mesh(wGeo, wingMat);
+                    lWing.position.set(0.4 * scale, 0.15 * scale, 0);
+                    rWing = new THREE.Mesh(wGeo, wingMat);
+                    rWing.rotation.y = 0.4;
+                    rWing.scale.x = -1;
+                    rWing.position.set(-0.4 * scale, 0.15 * scale, 0);
+                    birdGroup.add(lWing); birdGroup.add(rWing);
+                    break;
+                }
+
+                case 'crow': { // 3. 까마귀 - 묵직한 체구, 날카로운 대형 부리, 부채꼴 꼬리
+                    const bodyGeo = new THREE.CylinderGeometry(0.6 * scale, 0.75 * scale, 1.8 * scale, 12);
+                    bodyGeo.rotateX(Math.PI / 2.3);
+                    const body = new THREE.Mesh(bodyGeo, bodyMat);
+                    birdGroup.add(body);
+
+                    const headGeo = new THREE.SphereGeometry(0.55 * scale, 16, 16);
+                    const head = new THREE.Mesh(headGeo, bodyMat);
+                    head.position.set(0, 0.4 * scale, 0.75 * scale);
+                    birdGroup.add(head);
+
+                    const beakGeo = new THREE.ConeGeometry(0.22 * scale, 0.7 * scale, 8);
+                    const beak = new THREE.Mesh(beakGeo, beakMat);
+                    beak.rotation.x = Math.PI / 1.8;
+                    beak.position.set(0, 0.35 * scale, 1.25 * scale);
+                    birdGroup.add(beak);
+
+                    const eyeGeo = new THREE.SphereGeometry(0.1 * scale, 8, 8);
+                    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
+                    const pupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+                    const lEye = new THREE.Mesh(eyeGeo, eyeMat);
+                    lEye.position.set(0.28 * scale, 0.5 * scale, 0.95 * scale);
+                    const lPupil = new THREE.Mesh(new THREE.SphereGeometry(0.05 * scale, 6, 6), pupilMat);
+                    lPupil.position.set(0.3 * scale, 0.5 * scale, 1.02 * scale);
+                    const rEye = lEye.clone(); rEye.position.x = -0.28 * scale;
+                    const rPupil = lPupil.clone(); rPupil.position.x = -0.3 * scale;
+                    birdGroup.add(lEye); birdGroup.add(lPupil); birdGroup.add(rEye); birdGroup.add(rPupil);
+
+                    const tGeo = new THREE.CylinderGeometry(0.8 * scale, 0.1 * scale, 1.0 * scale, 8, 1, false, -Math.PI/3, Math.PI/1.5);
+                    tGeo.rotateX(Math.PI / 2);
+                    tail = new THREE.Mesh(tGeo, wingMat);
+                    tail.position.set(0, 0.1 * scale, -1.0 * scale);
+                    birdGroup.add(tail);
+
+                    const wGeo = new THREE.BoxGeometry(1.6 * scale, 0.08 * scale, 0.75 * scale);
+                    wGeo.translate(0.8 * scale, 0, 0);
+                    lWing = new THREE.Mesh(wGeo, wingMat);
+                    lWing.position.set(0.5 * scale, 0.2 * scale, 0);
+                    rWing = lWing.clone(); rWing.scale.x = -1; rWing.position.x = -0.5 * scale;
+                    birdGroup.add(lWing); birdGroup.add(rWing);
+                    break;
+                }
+
+                case 'parrot': { // 4. 앵무새 - 머리 깃털 벼슬(Crest), 굽은 부리, 화려한 긴 꼬리
+                    const bodyGeo = new THREE.SphereGeometry(0.75 * scale, 16, 16);
+                    bodyGeo.scale(0.8, 1.1, 1.0);
+                    const body = new THREE.Mesh(bodyGeo, bodyMat);
+                    birdGroup.add(body);
+
+                    const bellyGeo = new THREE.SphereGeometry(0.68 * scale, 12, 12);
+                    const belly = new THREE.Mesh(bellyGeo, bellyMat);
+                    belly.position.set(0, -0.1 * scale, 0.2 * scale);
+                    birdGroup.add(belly);
+
+                    const headGeo = new THREE.SphereGeometry(0.55 * scale, 16, 16);
+                    const head = new THREE.Mesh(headGeo, bodyMat);
+                    head.position.set(0, 0.55 * scale, 0.45 * scale);
+                    birdGroup.add(head);
+
+                    // Parrot Head Crest
+                    const crestGroup = new THREE.Group();
+                    for(let i=0; i<3; i++) {
+                        const cGeo = new THREE.ConeGeometry(0.1 * scale, (0.5 + i*0.15) * scale, 6);
+                        const cMat = new THREE.MeshLambertMaterial({ color: i===1 ? 0xFFC312 : 0x009432 });
+                        const cMesh = new THREE.Mesh(cGeo, cMat);
+                        cMesh.rotation.x = -0.3 - i*0.2;
+                        cMesh.position.set(0, (0.85 + i*0.1) * scale, (0.4 - i*0.1) * scale);
+                        crestGroup.add(cMesh);
+                    }
+                    birdGroup.add(crestGroup);
+
+                    const beakUpperGeo = new THREE.ConeGeometry(0.22 * scale, 0.55 * scale, 8);
+                    const beakUpper = new THREE.Mesh(beakUpperGeo, beakMat);
+                    beakUpper.rotation.x = Math.PI / 1.4;
+                    beakUpper.position.set(0, 0.45 * scale, 0.95 * scale);
+                    birdGroup.add(beakUpper);
+
+                    const eyeGeo = new THREE.SphereGeometry(0.1 * scale, 8, 8);
+                    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+                    const lEye = new THREE.Mesh(eyeGeo, eyeMat);
+                    lEye.position.set(0.28 * scale, 0.65 * scale, 0.75 * scale);
+                    const rEye = lEye.clone(); rEye.position.x = -0.28 * scale;
+                    birdGroup.add(lEye); birdGroup.add(rEye);
+
+                    const tailGroup = new THREE.Group();
+                    const colors = [0xEA2027, 0x009432, 0xFFC312, 0x0652DD];
+                    colors.forEach((c, idx) => {
+                        const tG = new THREE.BoxGeometry((0.4 - idx*0.06) * scale, 0.04 * scale, (1.2 + idx*0.2) * scale);
+                        tG.translate(0, -idx*0.02, (-0.6 - idx*0.1) * scale);
+                        const tM = new THREE.Mesh(tG, new THREE.MeshLambertMaterial({ color: c }));
+                        tailGroup.add(tM);
+                    });
+                    tailGroup.position.set(0, -0.1 * scale, -0.5 * scale);
+                    tail = tailGroup;
+                    birdGroup.add(tail);
+
+                    const wGeo = new THREE.BoxGeometry(1.4 * scale, 0.08 * scale, 0.7 * scale);
+                    wGeo.translate(0.7 * scale, 0, 0);
+                    lWing = new THREE.Mesh(wGeo, wingMat);
+                    lWing.position.set(0.45 * scale, 0.2 * scale, 0);
+                    rWing = lWing.clone(); rWing.scale.x = -1; rWing.position.x = -0.45 * scale;
+                    birdGroup.add(lWing); birdGroup.add(rWing);
+                    break;
+                }
+
+                case 'hummingbird': { // 5. 벌새 - 극초소형 슬림 바디, 바늘처럼 가늘고 긴 핀 부리
+                    const bodyGeo = new THREE.ConeGeometry(0.4 * scale, 1.4 * scale, 12);
+                    bodyGeo.rotateX(Math.PI / 2.2);
+                    const body = new THREE.Mesh(bodyGeo, bodyMat);
+                    birdGroup.add(body);
+
+                    const headGeo = new THREE.SphereGeometry(0.35 * scale, 16, 16);
+                    const head = new THREE.Mesh(headGeo, bodyMat);
+                    head.position.set(0, 0.25 * scale, 0.55 * scale);
+                    birdGroup.add(head);
+
+                    const beakGeo = new THREE.CylinderGeometry(0.02 * scale, 0.07 * scale, 1.3 * scale, 8);
+                    const beak = new THREE.Mesh(beakGeo, beakMat);
+                    beak.rotation.x = Math.PI / 2;
+                    beak.position.set(0, 0.25 * scale, 1.35 * scale);
+                    birdGroup.add(beak);
+
+                    const eyeGeo = new THREE.SphereGeometry(0.07 * scale, 8, 8);
+                    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x050505 });
+                    const lEye = new THREE.Mesh(eyeGeo, eyeMat);
+                    lEye.position.set(0.18 * scale, 0.32 * scale, 0.75 * scale);
+                    const rEye = lEye.clone(); rEye.position.x = -0.18 * scale;
+                    birdGroup.add(lEye); birdGroup.add(rEye);
+
+                    const wGeo = new THREE.BoxGeometry(1.5 * scale, 0.03 * scale, 0.35 * scale);
+                    wGeo.rotateY(-0.3);
+                    wGeo.translate(0.75 * scale, 0, 0);
+                    lWing = new THREE.Mesh(wGeo, wingMat);
+                    lWing.position.set(0.25 * scale, 0.1 * scale, 0);
+                    rWing = new THREE.Mesh(wGeo, wingMat);
+                    rWing.rotation.y = 0.6;
+                    rWing.scale.x = -1;
+                    rWing.position.set(-0.25 * scale, 0.1 * scale, 0);
+                    birdGroup.add(lWing); birdGroup.add(rWing);
+
+                    const tGeo = new THREE.ConeGeometry(0.15 * scale, 0.8 * scale, 6);
+                    tGeo.rotateX(-Math.PI / 2);
+                    tail = new THREE.Mesh(tGeo, wingMat);
+                    tail.position.set(0, 0.05 * scale, -0.8 * scale);
+                    birdGroup.add(tail);
+                    break;
+                }
+
+                case 'falcon': { // 6. 송골매 - 날카로운 매 갈고리 부리, 노란 안구 링, 에어로다이내믹 날개
+                    const bodyGeo = new THREE.CylinderGeometry(0.5 * scale, 0.68 * scale, 1.9 * scale, 12);
+                    bodyGeo.rotateX(Math.PI / 2.3);
+                    const body = new THREE.Mesh(bodyGeo, bodyMat);
+                    birdGroup.add(body);
+
+                    const headGeo = new THREE.SphereGeometry(0.52 * scale, 16, 16);
+                    const head = new THREE.Mesh(headGeo, bodyMat);
+                    head.position.set(0, 0.38 * scale, 0.75 * scale);
+                    birdGroup.add(head);
+
+                    const beakGeo = new THREE.ConeGeometry(0.22 * scale, 0.65 * scale, 8);
+                    const beak = new THREE.Mesh(beakGeo, beakMat);
+                    beak.rotation.x = Math.PI / 1.5;
+                    beak.position.set(0, 0.3 * scale, 1.25 * scale);
+                    birdGroup.add(beak);
+
+                    const eyeRingGeo = new THREE.SphereGeometry(0.12 * scale, 8, 8);
+                    const eyeRingMat = new THREE.MeshBasicMaterial({ color: 0xF1C40F });
+                    const eyePupilGeo = new THREE.SphereGeometry(0.08 * scale, 8, 8);
+                    const eyePupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+
+                    const lRing = new THREE.Mesh(eyeRingGeo, eyeRingMat);
+                    lRing.position.set(0.26 * scale, 0.48 * scale, 0.95 * scale);
+                    const lPupil = new THREE.Mesh(eyePupilGeo, eyePupilMat);
+                    lPupil.position.set(0.28 * scale, 0.48 * scale, 1.0 * scale);
+                    const rRing = lRing.clone(); rRing.position.x = -0.26 * scale;
+                    const rPupil = lPupil.clone(); rPupil.position.x = -0.28 * scale;
+                    birdGroup.add(lRing); birdGroup.add(lPupil); birdGroup.add(rRing); birdGroup.add(rPupil);
+
+                    const wGeo = new THREE.BoxGeometry(1.8 * scale, 0.07 * scale, 0.6 * scale);
+                    wGeo.rotateY(-0.25);
+                    wGeo.translate(0.9 * scale, 0, 0);
+                    lWing = new THREE.Mesh(wGeo, wingMat);
+                    lWing.position.set(0.45 * scale, 0.18 * scale, 0);
+                    rWing = new THREE.Mesh(wGeo, wingMat);
+                    rWing.rotation.y = 0.5;
+                    rWing.scale.x = -1;
+                    rWing.position.set(-0.45 * scale, 0.18 * scale, 0);
+                    birdGroup.add(lWing); birdGroup.add(rWing);
+
+                    const tGeo = new THREE.BoxGeometry(0.5 * scale, 0.05 * scale, 0.9 * scale);
+                    tGeo.translate(0, 0, -0.45 * scale);
+                    tail = new THREE.Mesh(tGeo, wingMat);
+                    tail.position.set(0, 0.08 * scale, -0.85 * scale);
+                    birdGroup.add(tail);
+                    break;
+                }
+
+                case 'owl': { // 7. 부엉이 - 평평한 안면 원반(Face Disc), 정면 거대 황금눈, 귀깃(Ear Tufts), 통통한 볼륨
+                    const bodyGeo = new THREE.SphereGeometry(0.95 * scale, 16, 16);
+                    bodyGeo.scale(0.95, 1.15, 0.9);
+                    const body = new THREE.Mesh(bodyGeo, bodyMat);
+                    birdGroup.add(body);
+
+                    const chestGeo = new THREE.SphereGeometry(0.85 * scale, 16, 16);
+                    chestGeo.scale(0.85, 1.0, 0.8);
+                    const chest = new THREE.Mesh(chestGeo, bellyMat);
+                    chest.position.set(0, -0.1 * scale, 0.25 * scale);
+                    birdGroup.add(chest);
+
+                    const headGeo = new THREE.SphereGeometry(0.72 * scale, 16, 16);
+                    headGeo.scale(1.0, 0.9, 0.85);
+                    const head = new THREE.Mesh(headGeo, bodyMat);
+                    head.position.set(0, 0.6 * scale, 0.3 * scale);
+                    birdGroup.add(head);
+
+                    const discGeo = new THREE.CylinderGeometry(0.55 * scale, 0.55 * scale, 0.08 * scale, 16);
+                    discGeo.rotateX(Math.PI / 2);
+                    const disc = new THREE.Mesh(discGeo, bellyMat);
+                    disc.position.set(0, 0.65 * scale, 0.72 * scale);
+                    birdGroup.add(disc);
+
+                    const eyeFrameGeo = new THREE.SphereGeometry(0.2 * scale, 12, 12);
+                    const eyeFrameMat = new THREE.MeshBasicMaterial({ color: 0xFFB300 });
+                    const pupilGeo = new THREE.SphereGeometry(0.12 * scale, 10, 10);
+                    const pupilMat = new THREE.MeshBasicMaterial({ color: 0x050505 });
+
+                    const lEye = new THREE.Mesh(eyeFrameGeo, eyeFrameMat);
+                    lEye.position.set(0.24 * scale, 0.68 * scale, 0.76 * scale);
+                    const lPupil = new THREE.Mesh(pupilGeo, pupilMat);
+                    lPupil.position.set(0.24 * scale, 0.68 * scale, 0.85 * scale);
+
+                    const rEye = lEye.clone(); rEye.position.x = -0.24 * scale;
+                    const rPupil = lPupil.clone(); rPupil.position.x = -0.24 * scale;
+                    birdGroup.add(lEye); birdGroup.add(lPupil); birdGroup.add(rEye); birdGroup.add(rPupil);
+
+                    const tuftGeo = new THREE.ConeGeometry(0.18 * scale, 0.55 * scale, 5);
+                    const lTuft = new THREE.Mesh(tuftGeo, wingMat);
+                    lTuft.rotation.z = -0.25;
+                    lTuft.position.set(0.38 * scale, 1.25 * scale, 0.35 * scale);
+                    const rTuft = new THREE.Mesh(tuftGeo, wingMat);
+                    rTuft.rotation.z = 0.25;
+                    rTuft.position.set(-0.38 * scale, 1.25 * scale, 0.35 * scale);
+                    birdGroup.add(lTuft); birdGroup.add(rTuft);
+
+                    const beakGeo = new THREE.ConeGeometry(0.12 * scale, 0.35 * scale, 8);
+                    const beak = new THREE.Mesh(beakGeo, beakMat);
+                    beak.rotation.x = Math.PI / 1.3;
+                    beak.position.set(0, 0.55 * scale, 0.8 * scale);
+                    birdGroup.add(beak);
+
+                    const wGeo = new THREE.BoxGeometry(1.4 * scale, 0.12 * scale, 0.85 * scale);
+                    wGeo.translate(0.7 * scale, 0, 0);
+                    lWing = new THREE.Mesh(wGeo, wingMat);
+                    lWing.position.set(0.55 * scale, 0.2 * scale, 0);
+                    rWing = lWing.clone(); rWing.scale.x = -1; rWing.position.x = -0.55 * scale;
+                    birdGroup.add(lWing); birdGroup.add(rWing);
+
+                    const tGeo = new THREE.BoxGeometry(0.6 * scale, 0.06 * scale, 0.5 * scale);
+                    tGeo.translate(0, 0, -0.25 * scale);
+                    tail = new THREE.Mesh(tGeo, wingMat);
+                    tail.position.set(0, -0.1 * scale, -0.7 * scale);
+                    birdGroup.add(tail);
+                    break;
+                }
+
+                case 'phoenix': { // 8. 불사조 (전설) - 화염 깃관 머리장식, 3가닥 긴 불꽃 꼬리, 거대한 불꽃 날개
+                    const bodyGeo = new THREE.ConeGeometry(0.75 * scale, 2.2 * scale, 12);
+                    bodyGeo.rotateX(Math.PI / 2.2);
+                    const body = new THREE.Mesh(bodyGeo, bodyMat);
+                    birdGroup.add(body);
+
+                    const headGeo = new THREE.SphereGeometry(0.55 * scale, 16, 16);
+                    const head = new THREE.Mesh(headGeo, bodyMat);
+                    head.position.set(0, 0.45 * scale, 0.85 * scale);
+                    birdGroup.add(head);
+
+                    const crownGroup = new THREE.Group();
+                    for(let i=0; i<4; i++) {
+                        const cGeo = new THREE.ConeGeometry((0.1 - i*0.015) * scale, (0.7 + i*0.12) * scale, 6);
+                        const cMat = new THREE.MeshBasicMaterial({ color: i%2===0 ? 0xFFA502 : 0xFF4757 });
+                        const cMesh = new THREE.Mesh(cGeo, cMat);
+                        cMesh.rotation.x = -0.4 - i*0.2;
+                        cMesh.rotation.z = (i%2 === 0 ? 0.15 : -0.15);
+                        cMesh.position.set((i%2===0?0.1:-0.1) * scale, (0.8 + i*0.1) * scale, (0.8 - i*0.15) * scale);
+                        crownGroup.add(cMesh);
+                    }
+                    birdGroup.add(crownGroup);
+
+                    const beakGeo = new THREE.ConeGeometry(0.2 * scale, 0.65 * scale, 8);
+                    const beak = new THREE.Mesh(beakGeo, beakMat);
+                    beak.rotation.x = Math.PI / 1.6;
+                    beak.position.set(0, 0.4 * scale, 1.4 * scale);
+                    birdGroup.add(beak);
+
+                    const eyeGeo = new THREE.SphereGeometry(0.11 * scale, 8, 8);
+                    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xFFDD59 });
+                    const lEye = new THREE.Mesh(eyeGeo, eyeMat);
+                    lEye.position.set(0.28 * scale, 0.58 * scale, 1.05 * scale);
+                    const rEye = lEye.clone(); rEye.position.x = -0.28 * scale;
+                    birdGroup.add(lEye); birdGroup.add(rEye);
+
+                    const tailGroup = new THREE.Group();
+                    const flameColors = [0xFF4757, 0xFFA502, 0xFFDD59];
+                    [-0.35, 0, 0.35].forEach((xOffset, idx) => {
+                        const tGeo = new THREE.ConeGeometry(0.2 * scale, (2.2 - Math.abs(xOffset)*0.8) * scale, 8);
+                        tGeo.rotateX(-Math.PI / 1.8);
+                        const tMesh = new THREE.Mesh(tGeo, new THREE.MeshStandardMaterial({ color: flameColors[idx], emissive: flameColors[idx], roughness: 0.2 }));
+                        tMesh.position.set(xOffset * scale, 0, -1.2 * scale);
+                        tailGroup.add(tMesh);
+                    });
+                    tail = tailGroup;
+                    birdGroup.add(tail);
+
+                    const wGeo = new THREE.BoxGeometry(2.2 * scale, 0.08 * scale, 0.85 * scale);
+                    wGeo.rotateY(-0.3);
+                    wGeo.translate(1.1 * scale, 0, 0);
+                    lWing = new THREE.Mesh(wGeo, wingMat);
+                    lWing.position.set(0.5 * scale, 0.25 * scale, 0);
+                    rWing = new THREE.Mesh(wGeo, wingMat);
+                    rWing.rotation.y = 0.6;
+                    rWing.scale.x = -1;
+                    rWing.position.set(-0.5 * scale, 0.25 * scale, 0);
+                    birdGroup.add(lWing); birdGroup.add(rWing);
+                    break;
+                }
+
+                case 'eagle': { // 9. 독수리 (신화) - 백두독수리 순백 머리/꼬리, 거대한 노란 갈고리 부리, 날개 끝 깃털
+                    const bodyGeo = new THREE.CylinderGeometry(0.65 * scale, 0.85 * scale, 2.3 * scale, 14);
+                    bodyGeo.rotateX(Math.PI / 2.3);
+                    const body = new THREE.Mesh(bodyGeo, bodyMat);
+                    birdGroup.add(body);
+
+                    const headMat = new THREE.MeshLambertMaterial({ color: 0xFFFFFF });
+                    const headGeo = new THREE.SphereGeometry(0.65 * scale, 16, 16);
+                    const head = new THREE.Mesh(headGeo, headMat);
+                    head.position.set(0, 0.5 * scale, 0.9 * scale);
+                    birdGroup.add(head);
+
+                    const upperBeakGeo = new THREE.ConeGeometry(0.28 * scale, 0.8 * scale, 8);
+                    const upperBeak = new THREE.Mesh(upperBeakGeo, beakMat);
+                    upperBeak.rotation.x = Math.PI / 1.45;
+                    upperBeak.position.set(0, 0.42 * scale, 1.45 * scale);
+                    birdGroup.add(upperBeak);
+
+                    const eyeGeo = new THREE.SphereGeometry(0.12 * scale, 8, 8);
+                    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xFFD700 });
+                    const pupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+                    const lEye = new THREE.Mesh(eyeGeo, eyeMat);
+                    lEye.position.set(0.32 * scale, 0.62 * scale, 1.12 * scale);
+                    const lPupil = new THREE.Mesh(new THREE.SphereGeometry(0.07 * scale, 6, 6), pupilMat);
+                    lPupil.position.set(0.34 * scale, 0.62 * scale, 1.18 * scale);
+
+                    const rEye = lEye.clone(); rEye.position.x = -0.32 * scale;
+                    const rPupil = lPupil.clone(); rPupil.position.x = -0.34 * scale;
+                    birdGroup.add(lEye); birdGroup.add(lPupil); birdGroup.add(rEye); birdGroup.add(rPupil);
+
+                    const tailMat = new THREE.MeshLambertMaterial({ color: 0xFFFFFF });
+                    const tGeo = new THREE.BoxGeometry(0.8 * scale, 0.06 * scale, 1.1 * scale);
+                    tGeo.translate(0, 0, -0.55 * scale);
+                    tail = new THREE.Mesh(tGeo, tailMat);
+                    tail.position.set(0, 0.1 * scale, -1.0 * scale);
+                    birdGroup.add(tail);
+
+                    const wingGroupL = new THREE.Group();
+                    const wGeo = new THREE.BoxGeometry(2.4 * scale, 0.09 * scale, 0.9 * scale);
+                    wGeo.translate(1.2 * scale, 0, 0);
+                    const mainLWing = new THREE.Mesh(wGeo, wingMat);
+                    wingGroupL.add(mainLWing);
+
+                    for(let f=0; f<4; f++) {
+                        const fGeo = new THREE.BoxGeometry(0.5 * scale, 0.04 * scale, 0.15 * scale);
+                        fGeo.translate(2.5 * scale, 0, (f*0.18 - 0.25) * scale);
+                        const featherMesh = new THREE.Mesh(fGeo, wingMat);
+                        featherMesh.rotation.y = 0.2 + f * 0.08;
+                        wingGroupL.add(featherMesh);
+                    }
+                    wingGroupL.position.set(0.55 * scale, 0.28 * scale, 0);
+                    lWing = wingGroupL;
+
+                    const wingGroupR = wingGroupL.clone();
+                    wingGroupR.scale.x = -1;
+                    wingGroupR.position.x = -0.55 * scale;
+                    rWing = wingGroupR;
+
+                    birdGroup.add(lWing); birdGroup.add(rWing);
+                    break;
+                }
+            }
+
+            return { group: birdGroup, leftWing: lWing, rightWing: rWing, tail: tail };
+        }
+
+        // Hostile Enemy Models (Hawk & Wolf)
+        function createHawkMesh() {
+            const hawkGroup = new THREE.Group();
+            const bodyGeo = new THREE.ConeGeometry(0.9, 2.5, 8);
+            bodyGeo.rotateX(Math.PI / 2);
+            const darkMat = new THREE.MeshLambertMaterial({ color: 0x222222 });
+            const redEyeMat = new THREE.MeshBasicMaterial({ color: 0xFF0000 });
+            
+        // 퀘스트 데이터 구조 확장 (일일 퀘스트 및 보스 퀘스트 추가)
+        let quests = [
+            { id: 1, title: '기본 모험가', desc: '코인 10개 수집하기', target: 10, current: 0, completed: false, reward: 50 },
+            { id: 2, title: '벌레 퇴치', desc: '몬스터 5마리 처치하기', target: 5, current: 0, completed: false, reward: 100 },
+            { id: 3, title: '탐험가', desc: '1000m 거리 이동하기', target: 1000, current: 0, completed: false, reward: 150 },
+            { id: 4, title: '보물 사냥꾼', desc: '코인 50개 수집하기', target: 50, current: 0, completed: false, reward: 300 },
+            { id: 5, title: '하늘의 정복자', desc: '몬스터 15마리 처치하기', target: 15, current: 0, completed: false, reward: 500 },
+            { id: 6, title: '장거리 비행', desc: '3000m 거리 이동하기', target: 3000, current: 0, completed: false, reward: 600 },
+            { id: 7, title: '강적 퇴치', desc: '보스 몬스터 1마리 처치하기', target: 1, current: 0, completed: false, reward: 1000 },
+            { id: 8, title: '전설의 새', desc: '총 점수 5000점 달성하기', target: 5000, current: 0, completed: false, reward: 2000 }
+        ];
+
+            const treeGeo = new THREE.ConeGeometry(2.5, 7, 8);
+        // 매일 퀘스트 자동 초기화 로직
+        function checkDailyReset() {
+            const lastReset = localStorage.getItem('lastQuestResetDate');
+            const today = new Date().toDateString();
+
+            if (lastReset !== today) {
+                quests.forEach(q => {
+                    q.current = 0;
+                    q.completed = false;
+                });
+                localStorage.setItem('lastQuestResetDate', today);
+                saveQuestProgress();
+            }
+        }
+
+        function updateStatusBarsHUD() {
+        // 강력한 보스 적 생성 및 업데이트 logic
+        function spawnBoss() {
+            enemies.push({
+                x: canvas.width + 100,
+                y: canvas.height / 2 - 50,
+                width: 80,
+                height: 80,
+                hp: 10,
+                maxHp: 10,
+                type: 'boss',
+                speedY: 2,
+                color: '#e74c3c'
+            });
+        }
+
+        function checkLandmarkExploration() {
+            landmarkObjects.forEach(lm => {
+                if (!window.gameState.discoveredLandmarks.has(lm.id)) {
+                    if (playerPos.distanceTo(lm.pos) < 25) {
+                        window.gameState.discoveredLandmarks.add(lm.id);
+                        sfx.playQuestSuccess();
+                        showToast(`📍 탐험 명소 발견: [${lm.name}]!`);
+
+                        if (window.gameState.discoveredLandmarks.size >= 3 && !window.gameState.questsCompleted.landmarks) {
+                            window.gameState.questsCompleted.landmarks = true;
+                            window.gameState.gold += 450;
+                            showToast("🎉 [퀘스트 완료] 3대 명소 모험 마스터! (+450G)");
+                            updateUI();
+                            window.saveGameData();
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateDayNightCycle() {
+            const time = window.gameState.timeOfDay;
+            const timeBadge = document.getElementById('time-display');
+
+            if (time < 0.25) {
+                if (timeBadge) timeBadge.innerHTML = `<i class="fa-solid fa-sun text-amber-400"></i> 아침`;
+                scene.background.setHex(0x87CEEB);
+            } else if (time < 0.5) {
+                if (timeBadge) timeBadge.innerHTML = `<i class="fa-solid fa-sun text-yellow-300"></i> 한낮`;
+                scene.background.setHex(0x70C1B3);
+            } else if (time < 0.75) {
+                if (timeBadge) timeBadge.innerHTML = `<i class="fa-solid fa-cloud-sun text-orange-400"></i> 노을`;
+                scene.background.setHex(0xE07A5F);
+            } else {
+                if (timeBadge) timeBadge.innerHTML = `<i class="fa-solid fa-moon text-indigo-300"></i> 밤`;
+                scene.background.setHex(0x1D2D44);
+            }
+        }
+    </script>
+
+    <script>
+        function checkQuestAndNPCLogic(delta) {
+            const distMama = playerPos.distanceTo(mamaBirdMesh.group.position);
+            const distBaby = playerPos.distanceTo(babyBirdMesh.group.position);
+
+            if (!window.gameState.babyBirdFound && distBaby < 4.0) {
+                window.gameState.babyBirdFound = true;
+                window.gameState.babyBirdFollowing = true;
+                sfx.playQuestSuccess();
+                showToast("🎉 길 잃은 아기 새를 발견했습니다! 엄마 새에게 안내하세요!");
+            }
+
+            if (window.gameState.babyBirdFollowing) {
+                const targetPos = playerPos.clone().sub(new THREE.Vector3(Math.sin(playerRotY) * 2.5, 0, Math.cos(playerRotY) * 2.5));
+                babyBirdMesh.group.position.lerp(targetPos, delta * 4);
+                babyBirdMesh.group.rotation.y = playerRotY;
+
+                if (distMama < 4.5 && !window.gameState.questsCompleted.babyBird) {
+                    window.gameState.questsCompleted.babyBird = true;
+                    window.gameState.babyBirdFollowing = false;
+                    babyBirdMesh.group.position.set(11.5, 0.8, 10.5);
+
+                    window.gameState.gold += 350;
+                    sfx.playQuestSuccess();
+                    showDialogue("엄마 새 & 아기 새", "아기 새를 안전하게 찾아주셔서 진심으로 고맙습니다! 위험한 천적을 피해 항상 조심해서 날아다니세요! (+350G 보상)");
+                    updateUI();
+                    window.saveGameData();
+                }
+            }
+
+            if (distMama < 4.0 && !window.dialogueOpen && !window.gameState.questsCompleted.babyBird) {
+                window.dialogueOpen = true;
+                showDialogue("엄마 새", "흑흑... 아기 새가 험준한 북서쪽 산맥 근처(-180, 140)에서 길을 잃었어요. 매의 습격을 받기 전에 구해주세요!");
+            } else if (distMama > 6.0) {
+                window.dialogueOpen = false;
+            }
+        }
+
+        function showDialogue(name, text) {
+            document.getElementById('npc-name-display').innerText = name;
+            document.getElementById('dialogue-text').innerText = text;
+            document.getElementById('dialogue-modal').classList.remove('hidden');
+        }
+
+        function renderMinimap() {
+            const miniCanvas = document.getElementById('minimap-canvas');
+            if (!miniCanvas) return;
+            const ctx = miniCanvas.getContext('2d');
+            const w = miniCanvas.width;
+            const h = miniCanvas.height;
+            const center = w / 2;
+            const mapScale = 0.28;
+
+            ctx.clearRect(0, 0, w, h);
+
+            ctx.strokeStyle = 'rgba(52, 211, 153, 0.25)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(center, center, center - 8, 0, Math.PI * 2);
+            ctx.arc(center, center, (center - 8) * 0.5, 0, Math.PI * 2);
+            ctx.stroke();
+
+            landmarkObjects.forEach(lm => {
+                const rx = (lm.pos.x - playerPos.x) * mapScale;
+                const rz = (lm.pos.z - playerPos.z) * mapScale;
+                if (Math.hypot(rx, rz) < center - 10) {
+                    ctx.fillStyle = '#C084FC';
+                    ctx.beginPath();
+                    ctx.arc(center + rx, center + rz, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+
+            enemiesList.forEach(e => {
+                const rx = (e.group.position.x - playerPos.x) * mapScale;
+                const rz = (e.group.position.z - playerPos.z) * mapScale;
+                if (Math.hypot(rx, rz) < center - 10) {
+                    ctx.fillStyle = '#EF4444';
+                    ctx.beginPath();
+                    ctx.arc(center + rx, center + rz, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+
+            ctx.fillStyle = '#FBBF24';
+            coinsList.forEach(c => {
+                if (!c.collected) {
+                    const rx = (c.mesh.position.x - playerPos.x) * mapScale;
+                    const rz = (c.mesh.position.z - playerPos.z) * mapScale;
+                    if (Math.hypot(rx, rz) < center - 10) {
+                        ctx.beginPath();
+                        ctx.arc(center + rx, center + rz, 2, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+            });
+
+            ctx.save();
+            ctx.translate(center, center);
+            ctx.rotate(-playerRotY);
+            ctx.fillStyle = '#38BDF8';
+            ctx.beginPath();
+            ctx.moveTo(0, -8);
+            ctx.lineTo(5, 6);
+            ctx.lineTo(0, 3);
+            ctx.lineTo(-5, 6);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+
+        window.updateUI = function() {
+            document.getElementById('player-gold-display').innerText = window.gameState.gold.toLocaleString();
+
+            const birdConfig = BIRD_TYPES[window.gameState.currentBirdId];
+            document.getElementById('menu-bird-name').innerText = `${birdConfig.name} (체력: ${birdConfig.hp} | 속도: x${birdConfig.speed})`;
+
+            const mapConfig = MAP_TYPES[window.gameState.currentMapId];
+            document.getElementById('menu-map-name').innerHTML = `현재 탐험 장소: <span class="font-bold text-emerald-600">${mapConfig.name}</span>`;
+
+            renderShopGrids();
+            renderQuestList();
+        };
+
+        function renderShopGrids() {
+            const birdGrid = document.getElementById('birds-shop-grid');
+            if (birdGrid) {
+                birdGrid.innerHTML = Object.values(BIRD_TYPES).map(b => {
+                    const isOwned = window.gameState.ownedBirds.includes(b.id);
+                    const isEquipped = window.gameState.currentBirdId === b.id;
+
+                    return `
+                        <div class="glass p-4 rounded-2xl flex flex-col justify-between border-2 ${isEquipped ? 'border-emerald-500 bg-emerald-50/50' : 'border-slate-200'}">
+                            <div>
+                                <div class="flex justify-between items-start mb-2">
+                                    <h3 class="font-jua text-lg text-slate-800">${b.name}</h3>
+                                    <div class="flex gap-1">
+                                        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">HP ${b.hp}</span>
+                                        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-100 text-sky-700">속도 x${b.speed}</span>
+                                    </div>
+                                </div>
+                                <p class="text-xs text-slate-500 mb-3">${b.desc}</p>
+                            </div>
+
+                            <div class="flex justify-between items-center mt-2 border-t pt-2 border-slate-200/60">
+                                <span class="font-bold text-amber-600 text-sm">${isOwned ? '보유함' : b.price + ' G'}</span>
+                                ${isEquipped ? `
+                                    <span class="bg-emerald-500 text-white font-bold text-xs px-4 py-2 rounded-xl">착용 중</span>
+                                ` : isOwned ? `
+                                    <button onclick="equipBird('${b.id}')" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-4 py-2 rounded-xl transition">착용하기</button>
+                                ` : `
+                                    <button onclick="buyBird('${b.id}')" class="bg-amber-500 hover:bg-amber-400 text-white font-bold text-xs px-4 py-2 rounded-xl transition">구매하기</button>
+                                `}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            const mapGrid = document.getElementById('maps-shop-grid');
+            if (mapGrid) {
+                mapGrid.innerHTML = Object.values(MAP_TYPES).map(m => {
+                    const isOwned = window.gameState.ownedMaps.includes(m.id);
+                    const isEquipped = window.gameState.currentMapId === m.id;
+
+                    return `
+                        <div class="glass p-4 rounded-2xl flex flex-col justify-between border-2 ${isEquipped ? 'border-emerald-500 bg-emerald-50/50' : 'border-slate-200'}">
+                            <div>
+                                <h3 class="font-jua text-lg text-slate-800 mb-1">${m.name}</h3>
+                                <p class="text-xs text-slate-500 mb-3">${m.desc}</p>
+                            </div>
+
+                            <div class="flex justify-between items-center mt-2 border-t pt-2 border-slate-200/60">
+                                <span class="font-bold text-amber-600 text-sm">${isOwned ? '보유함' : m.price + ' G'}</span>
+                                ${isEquipped ? `
+                                    <span class="bg-emerald-500 text-white font-bold text-xs px-4 py-2 rounded-xl">선택됨</span>
+                                ` : isOwned ? `
+                                    <button onclick="equipMap('${m.id}')" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-4 py-2 rounded-xl transition">선택하기</button>
+                                ` : `
+                                    <button onclick="buyMap('${m.id}')" class="bg-amber-500 hover:bg-amber-400 text-white font-bold text-xs px-4 py-2 rounded-xl transition">구매하기</button>
+                                `}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        function renderQuestList() {
+            const container = document.getElementById('quest-list-container');
+            if (!container) return;
+
+            const q = window.gameState.questsCompleted;
+            const p = window.gameState.questsProgress;
+            const lmCount = window.gameState.discoveredLandmarks.size;
+
+            container.innerHTML = `
+                <div class="glass p-4 rounded-2xl flex items-center justify-between border ${q.babyBird ? 'border-emerald-400 bg-emerald-50/40' : 'border-amber-300'}">
+                    <div>
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="font-bold text-slate-800 text-sm">1. 잃어버린 아기 새 구출</span>
+                            ${q.babyBird ? '<span class="bg-emerald-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">완료</span>' : '<span class="bg-amber-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">진행 중</span>'}
+                        </div>
+                        <p class="text-xs text-slate-500">북서쪽 산맥(-180, 140)에서 울고 있는 아기 새를 찾아 둥지로 데려오세요.</p>
+                    </div>
+                    <span class="font-bold text-amber-600 text-sm whitespace-nowrap ml-2">+350 G</span>
+                </div>
+
+                <div class="glass p-4 rounded-2xl flex items-center justify-between border ${q.landmarks ? 'border-emerald-400 bg-emerald-50/40' : 'border-amber-300'}">
+                    <div>
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="font-bold text-slate-800 text-sm">2. 3대 명소 모험 마스터 (${lmCount}/3)</span>
+                            ${q.landmarks ? '<span class="bg-emerald-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">완료</span>' : '<span class="bg-amber-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">진행 중</span>'}
+                        </div>
+                        <p class="text-xs text-slate-500">거대 고목, 수장옥 호수, 수정 봉우리를 모두 발견하세요.</p>
+                    </div>
+                    <span class="font-bold text-amber-600 text-sm whitespace-nowrap ml-2">+450 G</span>
+                </div>
+
+                <div class="glass p-4 rounded-2xl flex items-center justify-between border ${q.hawkDodge ? 'border-emerald-400 bg-emerald-50/40' : 'border-amber-300'}">
+                    <div>
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="font-bold text-slate-800 text-sm">3. 맹금류 추격 회피 생존 (${p.hawkDodgesCount}/3)</span>
+                            ${q.hawkDodge ? '<span class="bg-emerald-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">완료</span>' : '<span class="bg-amber-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">진행 중</span>'}
+                        </div>
+                        <p class="text-xs text-slate-500">공격하는 사냥매의 추격 습격을 받으면서 생존해내세요.</p>
+                    </div>
+                    <span class="font-bold text-amber-600 text-sm whitespace-nowrap ml-2">+400 G</span>
+                </div>
+
+                <div class="glass p-4 rounded-2xl flex items-center justify-between border ${q.featherCollect ? 'border-emerald-400 bg-emerald-50/40' : 'border-amber-300'}">
+                    <div>
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="font-bold text-slate-800 text-sm">4. 전설의 푸른 깃털 수집 (${p.feathersCollected}/5)</span>
+                            ${q.featherCollect ? '<span class="bg-emerald-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">완료</span>' : '<span class="bg-amber-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">진행 중</span>'}
+                        </div>
+                        <p class="text-xs text-slate-500">험준한 협곡 암벽 지대 상공에 떠 있는 빛나는 깃털을 찾아 모으세요.</p>
+                    </div>
+                    <span class="font-bold text-amber-600 text-sm whitespace-nowrap ml-2">+500 G</span>
+                </div>
+
+                <div class="glass p-4 rounded-2xl flex items-center justify-between border ${q.berries ? 'border-emerald-400 bg-emerald-50/40' : 'border-amber-300'}">
+                    <div>
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="font-bold text-slate-800 text-sm">5. 야생 빨간 열매 채집 (${p.berriesCollected}/6)</span>
+                            ${q.berries ? '<span class="bg-emerald-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">완료</span>' : '<span class="bg-amber-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">진행 중</span>'}
+                        </div>
+                        <p class="text-xs text-slate-500">숲 땅 위 근처에서 자라는 신선한 빨간 열매를 모으세요.</p>
+                    </div>
+                    <span class="font-bold text-amber-600 text-sm whitespace-nowrap ml-2">+350 G</span>
+                </div>
+            `;
+        }
+
+        window.buyBird = function(id) {
+            const b = BIRD_TYPES[id];
+            if (window.gameState.gold >= b.price) {
+                window.gameState.gold -= b.price;
+                window.gameState.ownedBirds.push(id);
+                window.gameState.currentBirdId = id;
+                sfx.playQuestSuccess();
+                showToast(`${b.name} 구매 및 착용 완료!`);
+                updateUI();
+                rebuildBirdModel();
+                window.saveGameData();
+            } else {
+                showToast("골드가 부족합니다!", "fa-circle-xmark", "text-rose-500");
+            }
+        };
+
+        window.equipBird = function(id) {
+            window.gameState.currentBirdId = id;
+            sfx.playClick();
+            showToast(`${BIRD_TYPES[id].name}(으)로 외형이 변경되었습니다!`);
+            updateUI();
+            rebuildBirdModel();
+            window.saveGameData();
+        };
+
+        window.buyMap = function(id) {
+            const m = MAP_TYPES[id];
+            if (window.gameState.gold >= m.price) {
+                window.gameState.gold -= m.price;
+                window.gameState.ownedMaps.push(id);
+                window.gameState.currentMapId = id;
+                sfx.playQuestSuccess();
+                showToast(`${m.name} 해금 완료!`);
+                updateUI();
+                rebuildMapEnvironment();
+                window.saveGameData();
+            } else {
+                showToast("골드가 부족합니다!", "fa-circle-xmark", "text-rose-500");
+            }
+        };
+
+        window.equipMap = function(id) {
+            window.gameState.currentMapId = id;
+            sfx.playClick();
+            showToast(`${MAP_TYPES[id].name}(으)로 맵이 변경되었습니다!`);
+            updateUI();
+            rebuildMapEnvironment();
+            window.saveGameData();
+        };
+
+        function showToast(msg, icon = 'fa-circle-check', iconColor = 'text-emerald-500') {
+            const toast = document.getElementById('toast-message');
+            const text = document.getElementById('toast-text');
+            const ic = document.getElementById('toast-icon');
+
+            text.innerText = msg;
+            ic.className = `fa-solid ${icon} ${iconColor} text-xl`;
+            toast.style.opacity = '1';
+            toast.style.transform = 'translate(-50%, 0)';
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translate(-50%, -10px)';
+            }, 2600);
+        }
+
+        // Setup Event Listeners on Load
+        window.onload = function() {
+            initThreeEngine();
+            updateUI();
+            updateGameLoop();
+
+            // Menu Screen Navigation Logic
+            document.getElementById('btn-start-game').onclick = () => {
+                window.gameState.mode = 'ingame';
+                document.getElementById('main-menu-screen').classList.add('hidden');
+                document.getElementById('ingame-hud').classList.remove('hidden');
+                document.getElementById('status-bars-container').classList.remove('hidden');
+                sfx.playClick();
+            };
+
+            document.getElementById('btn-return-menu').onclick = () => {
+                window.gameState.mode = 'menu';
+                document.getElementById('main-menu-screen').classList.remove('hidden');
+                document.getElementById('ingame-hud').classList.add('hidden');
+                document.getElementById('status-bars-container').classList.add('hidden');
+                sfx.playClick();
+            };
+
+            // Shop Modal
+            document.getElementById('btn-open-shop').onclick = () => {
+                document.getElementById('shop-modal').classList.remove('hidden');
+                sfx.playClick();
+            };
+
+            document.getElementById('btn-close-shop').onclick = () => {
+                document.getElementById('shop-modal').classList.add('hidden');
+                sfx.playClick();
+            };
+
+            document.getElementById('tab-birds-btn').onclick = () => {
+                document.getElementById('tab-birds-btn').className = "px-5 py-2.5 rounded-xl font-bold text-sm bg-emerald-500 text-white shadow";
+                document.getElementById('tab-maps-btn').className = "px-5 py-2.5 rounded-xl font-bold text-sm bg-slate-200 text-slate-700 hover:bg-slate-300";
+                document.getElementById('birds-shop-grid').classList.remove('hidden');
+                document.getElementById('maps-shop-grid').classList.add('hidden');
+                sfx.playClick();
+            };
+
+            document.getElementById('tab-maps-btn').onclick = () => {
+                document.getElementById('tab-maps-btn').className = "px-5 py-2.5 rounded-xl font-bold text-sm bg-emerald-500 text-white shadow";
+                document.getElementById('tab-birds-btn').className = "px-5 py-2.5 rounded-xl font-bold text-sm bg-slate-200 text-slate-700 hover:bg-slate-300";
+                document.getElementById('maps-shop-grid').classList.remove('hidden');
+                document.getElementById('birds-shop-grid').classList.add('hidden');
+                sfx.playClick();
+            };
+
+            // Quest Modal
+            const openQuestModal = () => {
+                document.getElementById('quest-modal').classList.remove('hidden');
+                sfx.playClick();
+            };
+            document.getElementById('btn-open-quests').onclick = openQuestModal;
+            document.getElementById('btn-quick-quest-log').onclick = openQuestModal;
+
+            document.getElementById('btn-close-quest').onclick = () => {
+                document.getElementById('quest-modal').classList.add('hidden');
+                sfx.playClick();
+            };
+
+            document.getElementById('btn-accept-dialogue').onclick = () => {
+                document.getElementById('dialogue-modal').classList.add('hidden');
+                sfx.playClick();
+            };
+
+            document.getElementById('btn-respawn').onclick = () => {
+                window.gameState.hp = window.gameState.maxHp;
+                playerPos.set(10, 2, 10);
+                document.getElementById('respawn-modal').classList.add('hidden');
+                sfx.playQuestSuccess();
+                updateStatusBarsHUD();
+            };
+        };
+    </script>
+</body>
+</html>
